@@ -39,7 +39,15 @@ else:
     data = imp.new_module('data')
     exec(TEST_DATA_RAW, data.__dict__)
 
-assign1 = __import__(args.script.rstrip('.py'))
+
+try:
+    assignment = __import__(args.script.rstrip('.py'))
+except SyntaxError as e:
+    print("/-----------------------------------\\")
+    print("| Tests not run due to syntax error |")
+    print("\\-----------------------------------/")
+    traceback.print_exception(SyntaxError, e, None, file=sys.stdout)
+    sys.exit(0)
 
 from io import StringIO
 import sys
@@ -180,7 +188,7 @@ def addGetTestCases(fnname,dataname, f=lambda x: x):
             with self.subTest(i):
                 fail = 0
                 try:
-                    fn = eval("assign1." + fnname)
+                    fn = eval("assignment." + fnname)
                 except AttributeError:
                     fail = 1
                 if fail:
@@ -200,7 +208,7 @@ def addIOTestCases(fnname, dataname, fout = lambda x: x, fret = lambda x: x):
             with self.subTest(i):
                 fail = 0
                 try:
-                    fn = eval("assign1." + fnname)
+                    fn = eval("assignment." + fnname)
                 except AttributeError:
                     fail = 1
                 if fail:
@@ -221,7 +229,7 @@ def addDocstringTests(data):
             with self.subTest(fnname):
                 fail = 0
                 try:
-                    fn = eval("assign1." + fnname)
+                    fn = eval("assignment." + fnname)
                 except AttributeError:
                     fail = 1
                 if fail:
@@ -249,7 +257,7 @@ def fn(self):
     fail = 0
     with self.subTest("file closed"):
         try:
-            fn = eval("assign1.load_data")
+            fn = eval("assignment.load_data")
         except AttributeError:
             fail = 1
         if fail:
