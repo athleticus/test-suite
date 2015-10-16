@@ -51,6 +51,7 @@ except SyntaxError as e:
 
 from io import StringIO
 import sys
+import inspect
 import collections
 import contextlib
 import warnings
@@ -139,6 +140,12 @@ class CsseTestResult(unittest.TextTestResult):
 
 
 class Csse1001TestCase(unittest.TestCase):
+    def assertImplemented(self, fn, msg=None):
+        lines, line_number = inspect.getsourcelines(fn)
+        empty = [x.strip() != "pass" for x in lines[1:] if x.strip()]
+        if False in empty:
+            self.fail(self._formatMessage(msg, "%s is not implemented" % unittest.util.safe_repr(fn.__name__)))
+    
     def id(self):
         return super().id().split('.')[-1].strip()
 
