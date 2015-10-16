@@ -89,7 +89,7 @@ class CsseTestResult(unittest.TextTestResult):
 
     def printErrors(self):
         if self.errors or self.failures:
-            self.stream.writeln("\n/------------\\")
+            self.stream.writeln("\n/--------------\\")
             self.stream.writeln("| Failed Tests |")
             self.stream.writeln("\\--------------/")
         if self.dots or self.showAll:
