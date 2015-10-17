@@ -7,18 +7,21 @@ tests = [
         "CSSE7030": False,
         "TEST_DATA": None,
         "TEST_DATA_RAW": "assign1_sample_testdata.py",
+        "MAXDIFF": 300,
         "SHOW_VERSION": True
     }),
     (TEST_RUNNER, "assign1_sample_tests_7030.py", {
         "CSSE7030": True,
         "TEST_DATA": None,
         "TEST_DATA_RAW": "assign1_sample_testdata.py",
+        "MAXDIFF": 300,
         "SHOW_VERSION": True
     }),
     (TEST_RUNNER, "assign1_marking_tests.py", {
         "CSSE7030": False,
         "TEST_DATA": None,
         "TEST_DATA_RAW": "assign1_testdata.py",
+        "MAXDIFF": 300,
         "SHOW_VERSION": False
     })
 ]

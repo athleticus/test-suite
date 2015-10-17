@@ -8,6 +8,7 @@ CSSE7030 = False
 SCRIPT = "assign1"
 TEST_DATA = "assign1_testdata"
 TEST_DATA_RAW = ''
+MAXDIFF = 300
 SHOW_VERSION = True
 # END DEFAULTS #
 ##############################################################################
@@ -22,6 +23,10 @@ parser.add_argument("test_data",
     help="The file containing test data to use.",
     nargs="?",
     default=TEST_DATA)
+parser.add_argument("-d", "--diff",
+    help="The maximum number of characters in a diff",
+    action="store",
+    default=MAXDIFF)
 parser.add_argument("-m", "--masters",
     help="Whether or not to utilize master's tests.",
     action='store_true',
@@ -153,7 +158,7 @@ class Csse1001TestCase(unittest.TestCase):
         def id(self):
             return super(Csse1001TestCase.CsseSubtest, self).id().split('test_')[-1].strip()
 
-    maxDiff = None
+    maxDiff = args.diff
     def __str__(self):
         return "Test "+self._testMethodName[5:]
 
@@ -187,6 +192,28 @@ class Csse1001TestCase(unittest.TestCase):
                 raise unittest.case._ShouldStop
         finally:
             self._subtest = parent
+
+    def assertMultiLineEqual(self, first, second, msg=None):
+        """Assert that two multi-line strings are equal."""
+        self.assertIsInstance(first, str, 'First argument is not a string')
+        self.assertIsInstance(second, str, 'Second argument is not a string')
+
+        if first != second:
+            # don't use difflib if the strings are too long
+            if (len(first) > self._diffThreshold or
+                len(second) > self._diffThreshold):
+                self._baseAssertEqual(first, second, msg)
+            firstlines = first.splitlines(keepends=True)
+            secondlines = second.splitlines(keepends=True)
+            if len(firstlines) == 1 and first.strip('\r\n') == first:
+                firstlines = [first + '\n']
+                secondlines = [second + '\n']
+            _common_shorten_repr = unittest.util._common_shorten_repr
+            standardMsg = '%s != %s' % _common_shorten_repr(first, second)
+            diff = '\n' + '\n'.join(difflib.ndiff(firstlines, secondlines))
+            diff = "\n".join([x for x in diff.split('\n') if x.strip()])
+            standardMsg = self._truncateMessage(standardMsg, diff)
+            self.fail(self._formatMessage(msg, standardMsg))
 
 
 def addGetTestCases(fnname,dataname, f=lambda x: x):
