@@ -66,7 +66,7 @@ class CsseTestResult(unittest.TextTestResult):
     def startTest(self, test):
         super(unittest.TextTestResult, self).startTest(test)
         self.runbuffer = StringIO()
-        self.runbuffer.write(test.id().split('.')[-1].strip().lstrip('test_'))
+        self.runbuffer.write(test.id().split('.')[-1].strip().split('test_', 1)[-1])
         self.runbuffer.write(": {} \n")
         self.stream.flush()
         self._stcount = 0
