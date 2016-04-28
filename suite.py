@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-VERSION = "1.1.0"
+VERSION = "2016s1_1.0.0"
 
 ##############################################################################
 # DEFAULTS #
@@ -8,12 +8,21 @@ CSSE7030 = False
 SCRIPT = "assign1"
 TEST_DATA = "assign1_testdata"
 TEST_DATA_RAW = ''
-MAXDIFF = 300
+MAXDIFF = 2500
 SHOW_VERSION = True
 # END DEFAULTS #
 ##############################################################################
 
 import argparse
+import unittest
+from io import StringIO
+import sys
+import collections
+import difflib
+import contextlib
+import warnings
+import traceback
+
 parser = argparse.ArgumentParser()
 parser.add_argument("script",
     help="The script you want to run the tests against.",
@@ -26,6 +35,7 @@ parser.add_argument("test_data",
 parser.add_argument("-d", "--diff",
     help="The maximum number of characters in a diff",
     action="store",
+    type=int,
     default=MAXDIFF)
 parser.add_argument("-m", "--masters",
     help="Whether or not to utilize master's tests.",
@@ -35,8 +45,6 @@ parser.add_argument('unittest_args', nargs='*')
 
 args = parser.parse_args()
 
-import unittest
-
 if args.test_data:
     data = __import__(args.test_data.rstrip('.py'))
 else:
@@ -44,23 +52,14 @@ else:
     data = imp.new_module('data')
     exec(TEST_DATA_RAW, data.__dict__)
 
-
 try:
-    assignment = __import__(args.script.rstrip('.py'))
+    assign1 = __import__(args.script.rstrip('.py').replace("/","."))
 except SyntaxError as e:
     print("/-----------------------------------\\")
     print("| Tests not run due to syntax error |")
     print("\\-----------------------------------/")
     traceback.print_exception(SyntaxError, e, None, file=sys.stdout)
     sys.exit(0)
-
-from io import StringIO
-import sys
-import inspect
-import collections
-import contextlib
-import warnings
-import traceback
 
 class CsseTestResult(unittest.TextTestResult):
     def startTest(self, test):
@@ -145,12 +144,6 @@ class CsseTestResult(unittest.TextTestResult):
 
 
 class Csse1001TestCase(unittest.TestCase):
-    def assertImplemented(self, fn, msg=None):
-        lines, line_number = inspect.getsourcelines(fn)
-        empty = [x.strip() != "pass" for x in lines[1:] if x.strip()]
-        if False in empty:
-            self.fail(self._formatMessage(msg, "%s is not implemented" % unittest.util.safe_repr(fn.__name__)))
-    
     def id(self):
         return super().id().split('.')[-1].strip()
 
@@ -192,160 +185,271 @@ class Csse1001TestCase(unittest.TestCase):
                 raise unittest.case._ShouldStop
         finally:
             self._subtest = parent
-
+            
     def assertMultiLineEqual(self, first, second, msg=None):
         """Assert that two multi-line strings are equal."""
         self.assertIsInstance(first, str, 'First argument is not a string')
         self.assertIsInstance(second, str, 'Second argument is not a string')
 
         if first != second:
-            # don't use difflib if the strings are too long
-            if (len(first) > self._diffThreshold or
-                len(second) > self._diffThreshold):
-                self._baseAssertEqual(first, second, msg)
-            firstlines = first.splitlines(keepends=True)
-            secondlines = second.splitlines(keepends=True)
-            if len(firstlines) == 1 and first.strip('\r\n') == first:
-                firstlines = [first + '\n']
-                secondlines = [second + '\n']
-            _common_shorten_repr = unittest.util._common_shorten_repr
-            standardMsg = '%s != %s' % _common_shorten_repr(first, second)
-            diff = '\n' + '\n'.join(difflib.ndiff(firstlines, secondlines))
-            diff = "\n".join([x for x in diff.split('\n') if x.strip()])
-            standardMsg = self._truncateMessage(standardMsg, diff)
-            self.fail(self._formatMessage(msg, standardMsg))
+          # don't use difflib if the strings are too long
+          if (len(first) > self._diffThreshold or
+              len(second) > self._diffThreshold):
+              self._baseAssertEqual(first, second, msg)
+          firstlines = first.splitlines(keepends=True)
+          secondlines = second.splitlines(keepends=True)
+          if len(firstlines) == 1 and first.strip('\r\n') == first:
+              firstlines = [first + '\n']
+              secondlines = [second + '\n']
+          _common_shorten_repr = unittest.util._common_shorten_repr
+          standardMsg = '%s != %s' % _common_shorten_repr(first, second)
+          diff = '\n' + '\n'.join(difflib.ndiff(firstlines, secondlines))
+          diff = "\n".join([x for x in diff.split('\n') if x.strip()])
+          standardMsg = self._truncateMessage(standardMsg, "\n" + diff)
+          self.fail(self._formatMessage(msg, standardMsg))
 
 
 def addGetTestCases(fnname,dataname, f=lambda x: x):
     def fn(self):
-        for i, item in eval("data.{}".format(dataname)):
+        for i, args, res in eval("data.{}".format(dataname)):
             with self.subTest(i):
                 fail = 0
                 try:
-                    fn = eval("assignment." + fnname)
+                    fn = eval("assign1." + fnname)
                 except AttributeError:
                     fail = 1
+
+                    # attempt to guess function
+                    guesses = function_best_guess(fnname)
+                    if len(guesses) > 0:
+                        fn = getattr(assign1, guesses[0])
+                        fail = 0
+
                 if fail:
                     self.fail("No function named '" +fnname +"'")
-                self.assertEqual(f(fn(*item[0])),f(item[1]))
+
+                self.assertEqual(f(fn(*args)),f(res))
     setattr(Csse1001TestCase, "test_{}".format(fnname),fn)
 
 
-def addIOTestCases(fnname, dataname, fout = lambda x: x, fret = lambda x: x):
+def addIOTestCases(fnname, dataname, fout = lambda x: x, fret = lambda x: x, exit_allowed = True, strict_return = True):
     d = eval("data.{}".format(dataname))
     def fn(self):
         self._in = sys.stdin
         self._out = sys.stdout
-        for i, item in d:
+        for i, args, res, stdin, stdout in d:
             sys.stdin = StringIO()
             sys.stdout = StringIO()
+
             with self.subTest(i):
                 fail = 0
                 try:
-                    fn = eval("assignment." + fnname)
+                    fn = eval("assign1." + fnname)
                 except AttributeError:
                     fail = 1
-                if fail:
-                    self.fail("No function named '" +fnname +"'")
-                sys.stdin.write(item[1][0])
+
+                    # attempt to guess function
+                    guesses = function_best_guess(fnname)
+                    if len(guesses) > 0:
+                        fn = getattr(assign1, guesses[0])
+                        fail = 0
+
+
+
+                sys.stdin.write(stdin)
                 sys.stdin.seek(0)
-                self.assertEqual(fret(fn(*item[0][0])),fret(item[0][1]))
+
+                # ignore quit/exit
+                exited = False
+                try:
+                    real_res = fret(fn(*args))
+                    if strict_return:
+                        self.assertEqual(real_res,fret(res))
+                except SystemExit as e:
+                    exited = True
+                    if not exit_allowed:
+                        raise e
+
                 sys.stdout.seek(0)
-                self.assertEqual(fout(sys.stdout.read()), fout(item[1][1]))
+                self.assertEqual(fout(sys.stdout.read()), fout(stdout))
         sys.stdin = self._in
         sys.stdout = self._out
 
     setattr(Csse1001TestCase, "test_{}".format(fnname),fn)
 
-def addDocstringTests(data):
+def addDocstringTests(data, label_formatter=lambda i, name: name):
     def fn(self):
-        for fnname in data:
-            with self.subTest(fnname):
+        for i, fnname in enumerate(data):
+            with self.subTest(label_formatter(i, fnname)):
                 fail = 0
                 try:
-                    fn = eval("assignment." + fnname)
+                    fn = eval("assign1." + fnname)
                 except AttributeError:
                     fail = 1
+
+                    # attempt to guess function
+                    guesses = function_best_guess(fnname)
+                    if len(guesses) > 0:
+                        fn = getattr(assign1, guesses[0])
+                        fail = 0
                 if fail:
                     self.fail("No function named '" +fnname +"'")
-                self.assertTrue(fn.__doc__,
+                self.assertTrue(fn.__doc__ is not None and fn.__doc__.strip(),
                                      "Function "+fnname+" should have a docstring")
     setattr(Csse1001TestCase, "test_docstrings",fn)
 
+def addNoExitTest():
+    fnname = "interact"
+    name = "Graceful Quit"
+    args = []
 
-loads_sorting = lambda x: [(k,list(sorted(map(lambda x:float(round(x,10)),v)))) for k,v in x]
+    oldfn = getattr(Csse1001TestCase, "test_interact")
+
+    def fn(self):
+        oldfn(self)
+
+        self._in = sys.stdin
+        self._out = sys.stdout
+
+        sys.stdin = StringIO()
+        sys.stdout = StringIO()
+
+        with self.subTest("10.  " + name):
+            fail = 0
+            try:
+                fn = eval("assign1." + fnname)
+            except AttributeError:
+                fail = 1
+            if fail:
+                self.fail("No function named '" +fnname +"'")
+
+            sys.stdin.write("8\nq\n")
+            sys.stdin.seek(0)
+
+            # ignore quit/exit
+            exited = False
+            try:
+                fn(*args)
+            except SystemExit as e:
+                exited = True
+                self.fail("exit()/quit() should not be called (use break/return instead)")
+            except Exception as e:
+                pass
+
+            sys.stdin = self._in
+            sys.stdout = self._out
+
+    setattr(Csse1001TestCase, "test_interact", fn)
 
 def fix_floats(data):
     return [(x,) +tuple(map(lambda x:float(round(x,10)),y)) for x,*y in data]
 
-addGetTestCases("get_ranges","ranges")
-addGetTestCases("get_mean","means")
-addGetTestCases("get_median","medians")
-addGetTestCases("get_std_dev","stddevs",lambda x:float(round(x,10)))
-addGetTestCases("load_data","loads")
-
-
-old_load_test = Csse1001TestCase.test_load_data
-def fn(self):
-    old_load_test(self)
-    fail = 0
-    with self.subTest("file closed"):
-        try:
-            fn = eval("assignment.load_data")
-        except AttributeError:
-            fail = 1
-        if fail:
-            self.fail("No function named 'load_data'")
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            fn("animal_heights.csv")
-            for warn in w:
-                if issubclass(warn.category, ResourceWarning):
-                    self.fail("Files should be closed in load_data")
-            warnings.simplefilter("ignore")
-Csse1001TestCase.test_load_data = fn
-
-addGetTestCases("data_summary","summaries", fix_floats)
-
 import re
-def table_strip(string):
-    string = string.replace("Set Summaries","\nSet Summaries")
-    string = string.replace("Unknown command","\nUnknown command")
-    vals = [re.split(" {2,}|\t+",x.strip()) for x in string.strip().split('\n')]
-    return "\n".join("".join(map("{0: <15}".format,x)) for x in vals if x != [''])
+def duplicate_whitespace_strip(string):
+    #string = string.strip()
 
-addIOTestCases("display_set_summaries","sets",table_strip)
-addIOTestCases("interact","interactions",table_strip)
+    # ensure space after prompt
+    string = re.sub(r'[?]([^ ])', '? \\1', string)
+    string = re.sub(r'[?]', '? ', string)
 
-if args.masters:
-    addGetTestCases("data_comparison","comparisons")
-    addIOTestCases("display_comparison","comp_io",table_strip)
-    addIOTestCases("interact","interactions7030",table_strip)
-fns = [
-    "load_data",
-    "get_ranges",
-    "get_mean",
-    "get_median",
-    "get_std_dev",
-    "data_summary",
-    "display_set_summaries",
-    "interact",
-]
+    # remove excessive spaces
+    string = re.sub(r'[ ]{2,}', ' ', string)
+    return string
+
+addGetTestCases("make_initial_state","initial_states")
+addGetTestCases("make_position_string","position_strings")
+addGetTestCases("num_diffs","diffs")
+addGetTestCases("position_of_blanks","blank_positions")
+addGetTestCases("make_move","moves")
+
+addIOTestCases("show_current_state","current_states", strict_return=False)
+addIOTestCases("interact","interactions", duplicate_whitespace_strip)
 
 
-if args.masters:
-    fns +=["data_comparison", "display_comparison"]
-addDocstringTests(fns)
+### any extra masters tests ###
+# i.e.
+# if args.masters:
+#     ...
+
+fns = """
+make_initial_state
+make_position_string
+num_diffs
+position_of_blanks
+make_move
+show_current_state
+interact
+""".strip().split()
+
+# if args.masters:
+#     fns +=["data_comparison", "display_comparison"]
+
+
+addDocstringTests(fns, label_formatter=lambda i, name: "{i:<4} {name}".format(i=str(i + 1) + ".", name=name))
+
+addNoExitTest()
+
+def function_best_guess(fn):
+    return difflib.get_close_matches(fn, dir(assign1))
+
+def addFunctionNameTests(fnnames):
+    # Check for correct function names
+    def fn(self):
+        for i, fnname in enumerate(fnnames):
+            with self.subTest('{i:<4} {name}'.format(i=str(i + 1) + '.', name=fnname)):
+                if not getattr(assign1, fnname, False):
+                    text = "No function named '{}'.".format(fnname)
+                    guesses = function_best_guess(fnname)
+
+                    if len(guesses) == 1:
+                        text += " Perhaps '{}'".format(guesses[0])
+                    elif len(guesses) > 1:
+                        guesses = ["'{}'".format(guess) for guess in guesses]
+                        guesses[-1] = "or "
+                        guesses = ", ".join(guesses)
+                        text += " Perhaps {}".format(guesses)
+                    self.fail(text)
+
+    setattr(Csse1001TestCase, "test_naming", fn)
+
+addFunctionNameTests(fns)
+
+test_sections = fns + ["docstrings", "naming"]
 
 def methodCmp(a, b):
     global fns
-    As = [i for i,x in enumerate(fns+["docstrings"]) if x in a]
-    Bs = [i for i,x in enumerate(fns+["docstrings"]) if x in b]
+    As = [i for i,x in enumerate(test_sections) if x in a]
+    Bs = [i for i,x in enumerate(test_sections) if x in b]
     return As[0] - Bs[0]
+
+def wrap(text, length=80):
+    return [text[i:i+length] for i in range(0, len(text), length)]
+
+# exit/quit patching
+# real_quit = quit
+# real_exit = exit
+#
+# def fake_exit(*args, **kwargs):
+#     raise Warning("exit() should not be used")
+#
+# def fake_quit(*args, **kwargs):
+#     raise Warning("quit() should not be used")
+#
+#
+# sys.__dict__['exit'] = fake_exit
+# assign1.__dict__['exit'] = fake_exit
+# assign1.__dict__['quit'] = fake_quit
+
+
 
 if __name__=="__main__":
     if SHOW_VERSION:
         print("Version {}\n".format(VERSION))
+
+    #print("#" * 79)
+    #[print(line) for line in wrap("Note that passing these tests does not necessarily imply that your assignment is complete or correct, but that there are no basic issues.", 79)]
+    #print("#" * 79)
+    print()
 
     sys.argv[1:] = args.unittest_args
     runner = unittest.TextTestRunner(verbosity=9, resultclass=CsseTestResult, stream=sys.stdout)
