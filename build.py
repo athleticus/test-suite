@@ -2,6 +2,10 @@
 
 import os
 import argparse
+import imp
+import sys
+
+from test import relative_import
 
 MODULE_EMBED = """
 import imp
@@ -25,13 +29,14 @@ def embed_module(module_name, file_path):
 
 
 
-def build_test(test_runner, executable, options):
+def build_test(test_runner, executable, options, library_path="test.py"):
     """
     Builds a standalone test executable based upon test configuration.
 
     :param test_runner: The test runner to use (i.e. suite.py)
     :param executable: The name of the output file (i.e. assign1_sample_tests.py)
     :param options: A dictionary whose keys override the given defaults in test_runner.
+    :param library_path: The path to the test library to be embedded.
 
     :return: None
     """
@@ -51,7 +56,7 @@ def build_test(test_runner, executable, options):
             if not first_line and not line.strip().startswith("#"):
                 first_line = True
 
-                embed_code = embed_module("test", "test.py")
+                embed_code = embed_module("test", library_path)
                 output.append("\n" + embed_code + "\n")
 
 
@@ -99,7 +104,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    manifest = __import__(args.manifest.rstrip('.py').replace("/","."))
+    # import manifest file
+    manifest = relative_import(args.manifest, "manifest")
+
+    library_path = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "test.py"))
 
     # Work from the manifest file's directory
     os.chdir('./' + os.path.dirname(args.manifest))
@@ -108,6 +116,6 @@ if __name__ == "__main__":
         if args.remove:
             clear_test(test['executable'])
         else:
-            build_test(**test)
+            build_test(library_path = library_path, **test)
 
 
