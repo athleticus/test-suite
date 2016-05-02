@@ -3,6 +3,28 @@
 import os
 import argparse
 
+MODULE_EMBED = """
+import imp
+import sys
+sys.modules['{module}'] = imp.new_module('{module}')
+exec({code}, sys.modules['{module}'].__dict__)
+""".strip()
+
+def embed_module(module_name, file_path):
+    """
+    Generates python code for embedding the given module.
+
+    :param module_name: The name of the module.
+    :param file: The file containing the module data.
+    :return: A string that can be embedded into a given file that imports the module.
+    """
+
+    with open(file_path, "r") as fd:
+        return MODULE_EMBED.format(module=module_name, code=repr(fd.read()))
+
+
+
+
 def build_test(test_runner, executable, options):
     """
     Builds a standalone test executable based upon test configuration.
@@ -16,25 +38,35 @@ def build_test(test_runner, executable, options):
 
     if options['TEST_DATA_RAW']:
         with open(options['TEST_DATA_RAW'], 'r') as fd:
-            options['TEST_DATA_RAW'] = repr(fd.read())
+            options['TEST_DATA_RAW'] = fd.read()
 
     output = []
+
+    first_line = False
     started = False
     stopped = False
+
     with open(test_runner, 'r') as fd:
         for line in fd:
-            if not stopped and line.startswith("# DEFAULTS #"):
+            if not first_line and not line.strip().startswith("#"):
+                first_line = True
+
+                embed_code = embed_module("test", "test.py")
+                output.append("\n" + embed_code + "\n")
+
+
+            if not started and line.startswith("# DEFAULT OVERRIDES #"):
                 started = True
 
-            if started and line.startswith("# END DEFAULTS #"):
-                stopped = True
-
-            if started:
-                key = line.split('=')[0].strip()
+            if started and line.startswith('DEFAULTS['):
+                key = line.split('[', 1)[1].split(']')[0].strip()[1:-1]
                 if key in options:
-                    line = "{key} = {value}\n".format(
-                        key=key,
-                        value=options[key])
+                    continue
+
+            if line.startswith("# END DEFAULT OVERRIDES #"):
+                for key, value in options.items():
+                    override = "DEFAULTS[{key!r}] = {value!r}".format(key=key, value=value)
+                    output.append(override + "\n")
 
             output.append(line)
 
@@ -58,9 +90,7 @@ def clear_test(executable):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest",
-                        help="The build manifest.",
-                        nargs="?",
-                        default="manifest.py")
+                        help="The build manifest.")
     parser.add_argument("-r", "--remove",
                         help="Removes the executables.",
                         action="store",

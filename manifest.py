@@ -7,8 +7,8 @@ tests = [
         "options": {
             "CSSE7030": False,
             "TEST_DATA": None,
-            "TEST_DATA_RAW": "assign1_sample_testdata.py",
-            "SHOW_VERSION": True
+            "TEST_DATA_RAW": "assign1_testdata.py",
+            "SCRIPT": "assign1.py"
         }
     },
     {
@@ -18,7 +18,7 @@ tests = [
             "CSSE7030": False,
             "TEST_DATA": None,
             "TEST_DATA_RAW": "assign1_testdata.py",
-            "SHOW_VERSION": False
+            "SCRIPT": "assign1.py"
         }
     }
 ]
