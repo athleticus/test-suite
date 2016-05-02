@@ -33,7 +33,8 @@ import re
 import json
 import argparse
 import time
-
+import os
+import imp
 from enum import Enum, unique
 
 
@@ -43,6 +44,23 @@ class TestOutcome(Enum):
     FAIL = 1
     SKIP = 2
 
+
+def relative_import(module_path, module_name=None):
+    """
+    Imports a module relatively, regardless of whether relevant directories are python modules.
+
+    :param module_path: The path to the module to import.
+    :param module_name: The name of the module. If None, the filename of the module_path is used, sans extension.
+    :return: The module.
+    """
+    if module_name is None:
+        module_name = os.path.basename(module_path).split('.')[0]
+
+    with open(module_path, "r") as fd:
+        sys.modules[module_name] = module = imp.new_module(module_name)
+        exec(fd.read(), sys.modules[module_name].__dict__)
+
+    return module
 
 def _is_relevant_tb_level(tb, *globals):
     """
@@ -959,6 +977,7 @@ class TestMaster(object):
     def load_test_data(self):
         if self._args.test_data:
             data = __import__(self._args.test_data.rstrip('.py'))
+            #data = relative_import(self._args.test_data, "data")
         else:
             import imp
 
